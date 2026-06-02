@@ -872,15 +872,33 @@
         async function saveToHistory(statusAction, blueprintText = '', sqlText = '') {
             if(!currentUser) return;
             const formData = getFormData();
-            await callGASBackend('save_history', {
+
+            // Batasi panjang teks agar tidak melebihi kapasitas GAS URLSearchParams
+            // GAS sering gagal silent jika parameter terlalu besar
+            const MAX_CHARS = 40000;
+            const safeBlueprintText = blueprintText.length > MAX_CHARS
+                ? blueprintText.substring(0, MAX_CHARS) + '\n\n[... teks dipotong karena melebihi batas penyimpanan ...]'
+                : blueprintText;
+            const safeSoalText = sqlText.length > MAX_CHARS
+                ? sqlText.substring(0, MAX_CHARS) + '\n\n[... teks dipotong karena melebihi batas penyimpanan ...]'
+                : sqlText;
+            const formDataStr = JSON.stringify(formData);
+            const safeFormData = formDataStr.length > 5000 ? formDataStr.substring(0, 5000) : formDataStr;
+
+            const saveRes = await callGASBackend('save_history', {
                 email: currentUser.email,
                 mapel: formData.mapel || 'Asesmen Tanpa Judul',
                 kelas: formData.kelas || 'X',
                 jenis: formData.jenisAsesmen + ' - ' + statusAction,
-                formData: JSON.stringify(formData),
-                blueprint: blueprintText,
-                soal: sqlText
+                formData: safeFormData,
+                blueprint: safeBlueprintText,
+                soal: safeSoalText
             });
+
+            if (saveRes && saveRes.status !== 'success') {
+                console.warn('Gagal menyimpan riwayat:', saveRes.message);
+                showToast('⚠️ Riwayat gagal tersimpan. Periksa koneksi GAS atau redeploy script.', 'error');
+            }
             fetchHistoryData();
         }
 
